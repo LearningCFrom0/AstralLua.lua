@@ -211,22 +211,6 @@ function Astral:CreateWindow(config)
         Parent = PlayerGui,
     })
 
-    -- soft drop shadow behind the window
-    local Shadow = new("ImageLabel", {
-        Name = "Shadow",
-        Image = "rbxassetid://6014261993",
-        ImageColor3 = Color3.new(0, 0, 0),
-        ImageTransparency = 0.45,
-        ScaleType = Enum.ScaleType.Slice,
-        SliceCenter = Rect.new(49, 49, 450, 450),
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 60, 1, 60),
-        Position = UDim2.new(0.5, 0, 0.5, 0),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        ZIndex = 0,
-        Parent = ScreenGui,
-    })
-
     local Main = new("Frame", {
         Name = "Main",
         Size = UDim2.fromOffset(560, 380),
@@ -326,7 +310,7 @@ function Astral:CreateWindow(config)
     })
 
     local TabList = new("ScrollingFrame", {
-        Size = UDim2.new(1, 0, 1, -34),
+        Size = UDim2.new(1, 0, 1, -10),
         Position = UDim2.new(0, 0, 0, 10),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
@@ -338,17 +322,6 @@ function Astral:CreateWindow(config)
     }, {
         new("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
         padding(8, 0, 8, 0),
-    })
-
-    local Footer = new("TextLabel", {
-        Text = "Astral.Lua",
-        Font = Theme.Font,
-        TextSize = 10,
-        TextColor3 = Theme.TextSecondary,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 20),
-        Position = UDim2.new(0, 0, 1, -20),
-        Parent = Sidebar,
     })
 
     -- Content area (holds one page per tab)
@@ -441,17 +414,6 @@ function Astral:SetFont(bodyFont, boldFont)
     for _, applyFn in ipairs(self.Registry) do
         applyFn()
     end
-end
-
--- 0 = fully opaque, 1 = fully invisible. Affects the main window and
--- sidebar background so people can see through the menu if they want.
-function Astral:SetTransparency(alpha)
-    alpha = math.clamp(alpha, 0, 0.85) -- cap so it never becomes unusable
-    tween(self.Main, {BackgroundTransparency = alpha}, 0.15)
-    local Sidebar = self.Main:FindFirstChild("Sidebar")
-    if Sidebar then tween(Sidebar, {BackgroundTransparency = alpha}, 0.15) end
-    local TopBar = self.Main:FindFirstChild("TopBar")
-    if TopBar then tween(TopBar, {BackgroundTransparency = alpha}, 0.15) end
 end
 
 --// ══════════════════════ TABS ══════════════════════
