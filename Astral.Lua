@@ -192,6 +192,131 @@ noSpreadToggle:bindToEvent('onToggle', function(newState)
     toggleNoSpread(newState)
 end)
 
+-- ============================================
+-- NO FALL DAMAGE
+-- ============================================
+
+-- No Fall Damage Toggle
+local noFallToggle = combatSection:addToggle({
+    text = 'No Fall Damage',
+    state = false
+})
+noFallToggle:setTooltip('Prevents fall damage by canceling fall velocity')
+
+-- No Fall Damage Logic
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+local fallConnections = {}
+local fallEnabled = false
+local fallStartY = nil
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+local function disconnectFall()
+    for _, c in ipairs(fallConnections) do
+        if c.Connected then c:Disconnect() end
+    end
+    fallConnections = {}
+    fallStartY = nil
+end
+
+local function connectFall(char)
+    disconnectFall()
+    local hum = char:WaitForChild("Humanoid", 5)
+    local hrp = char:WaitForChild("HumanoidRootPart", 5)
+    if not hum or not hrp then return end
+    
+    -- Disable ragdoll to prevent fall death
+    hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+    rayParams.FilterDescendantsInstances = {char}
+
+    -- Monitor state changes
+    fallConnections[#fallConnections + 1] = hum.StateChanged:Connect(function(_, s)
+        if s == Enum.HumanoidStateType.Ragdoll then
+            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        elseif s == Enum.HumanoidStateType.Landed or s == Enum.HumanoidStateType.Running then
+            fallStartY = nil
+        end
+    end)
+
+    -- Main fall prevention loop
+    fallConnections[#fallConnections + 1] = RunService.Heartbeat:Connect(function()
+        if not fallEnabled then return end
+        
+        local r = char:FindFirstChild("HumanoidRootPart")
+        local h = char:FindFirstChild("Humanoid")
+        if not r or not h then return end
+
+        -- Check if on ground
+        if h.FloorMaterial ~= Enum.Material.Air then
+            fallStartY = nil
+            return
+        end
+
+        -- Start tracking fall
+        if fallStartY == nil then
+            fallStartY = r.Position.Y
+        end
+
+        -- Only intervene after falling more than 6.5 studs
+        if fallStartY - r.Position.Y < 6.5 then return end
+
+        -- Raycast to find ground
+        local result = workspace:Raycast(r.Position, Vector3.new(0, -300, 0), rayParams)
+        if not result then return end
+
+        -- Teleport to ground safely
+        r.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        r.CFrame = CFrame.new(r.Position.X, result.Position.Y + 3, r.Position.Z)
+        fallStartY = nil
+    end)
+end
+
+local function toggleNoFall(state)
+    fallEnabled = state
+    if state then
+        local char = LocalPlayer.Character
+        if char then 
+            connectFall(char) 
+        end
+        ui.notify({
+            title = 'No Fall Damage',
+            message = 'Enabled',
+            duration = 2
+        })
+    else
+        disconnectFall()
+        -- Re-enable ragdoll
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChild("Humanoid")
+            if hum then 
+                hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true) 
+            end
+        end
+        ui.notify({
+            title = 'No Fall Damage',
+            message = 'Disabled',
+            duration = 2
+        })
+    end
+end
+
+-- Handle character respawns
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(0.5)
+    if fallEnabled then 
+        connectFall(char) 
+    end
+end)
+
+-- Link toggle
+noFallToggle:bindToEvent('onToggle', function(newState)
+    toggleNoFall(newState)
+end)
+
 -- FOV Slider
 combatSection:addSlider({
     text = 'Aim FOV',
@@ -749,6 +874,12 @@ settingsSection:addButton({
         toggleNoSpread(false)
     end
     
+    -- Reset No Fall Damage
+    if noFallToggle:getState() then
+        noFallToggle:disable()
+        toggleNoFall(false)
+    end
+    
     -- Reset ESP
     if espMasterToggle:getState() then
         espMasterToggle:disable()
@@ -759,6 +890,12 @@ settingsSection:addButton({
     if neonModeToggle:getState() then
         neonModeToggle:disable()
         updateAllNeon(false)
+    end
+    
+    -- Reset Staff Detector
+    if staffDetectorToggle:getState() then
+        staffDetectorToggle:disable()
+        toggleStaffDetector(false)
     end
     
     -- Reset toggles
@@ -789,6 +926,78 @@ settingsSection:addButton({
 end)
 
 -- ============================================
+-- STAFF DETECTOR
+-- ============================================
+
+-- Staff Detector Toggle
+local staffDetectorToggle = settingsSection:addToggle({
+    text = 'Staff Detector',
+    state = false
+})
+staffDetectorToggle:setTooltip('Detects moderators/staff and kicks you from the server')
+
+-- Staff Detector Logic
+local staffDetectorRunning = false
+local staffDetectorConnection = nil
+
+local function toggleStaffDetector(state)
+    if state then
+        if not staffDetectorRunning then
+            staffDetectorRunning = true
+            ui.notify({
+                title = 'Staff Detector',
+                message = 'Enabled - Monitoring for staff',
+                duration = 2
+            })
+
+            -- Start the staff detector loop
+            staffDetectorConnection = game:GetService("RunService").Heartbeat:Connect(function()
+                if not staffDetectorRunning then return end
+                
+                for _, player in ipairs(Players:GetPlayers()) do
+                    if player == game.Players.LocalPlayer then continue end
+                    
+                    local character = player.Character
+                    if character then
+                        local head = character:FindFirstChild("Head")
+                        -- Check if head is invisible (common staff indicator)
+                        if head and head.Transparency == 1 then
+                            ui.notify({
+                                title = '⚠️ Staff Detected!',
+                                message = 'Kicking you from the server...',
+                                duration = 3
+                            })
+                            task.wait(0.5)
+                            game:Shutdown()
+                            return
+                        end
+                    end
+                end
+            end)
+        end
+    else
+        -- Stop the staff detector
+        if staffDetectorRunning then
+            staffDetectorRunning = false
+            if staffDetectorConnection then
+                staffDetectorConnection:Disconnect()
+                staffDetectorConnection = nil
+            end
+            ui.notify({
+                title = 'Staff Detector',
+                message = 'Disabled',
+                duration = 2
+            })
+        end
+    end
+end
+
+-- Link toggle
+staffDetectorToggle:bindToEvent('onToggle', function(newState)
+    toggleStaffDetector(newState)
+end)
+
+-- ============================================
 -- 8. CLEANUP
 -- ============================================
 window:bindToEvent('destroyInternal', function()
@@ -804,6 +1013,16 @@ window:bindToEvent('destroyInternal', function()
         end)
     end
     recoilHooks = {}
+    -- Clean up staff detector
+    if staffDetectorRunning then
+        staffDetectorRunning = false
+        if staffDetectorConnection then
+            staffDetectorConnection:Disconnect()
+            staffDetectorConnection = nil
+        end
+    end
+    -- Clean up fall damage
+    disconnectFall()
 end)
 
 print('Astral Combat Hub loaded successfully!')
