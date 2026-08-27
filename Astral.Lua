@@ -67,6 +67,131 @@ triggerbotToggle:bindToEvent('onToggle', function(newState)
     print('Triggerbot:', newState)
 end)
 
+-- ============================================
+-- NO RECOIL & NO SPREAD
+-- ============================================
+
+-- No Recoil Toggle
+local noRecoilToggle = combatSection:addToggle({
+    text = 'No Recoil',
+    state = false
+})
+noRecoilToggle:setTooltip('Removes weapon recoil')
+
+-- No Spread Toggle
+local noSpreadToggle = combatSection:addToggle({
+    text = 'No Spread',
+    state = false
+})
+noSpreadToggle:setTooltip('Removes bullet spread')
+
+-- No Recoil Logic
+local recoilHooks = {}
+local function toggleNoRecoil(state)
+    if state then
+        pcall(function()
+            setidentity(8)
+            for a, b in getgc(true) do
+                if typeof(b) == "function" and islclosure(b) then
+                    local c = debug.getinfo(b)
+                    if c and c.name == "GunRecoil" then
+                        local hook = hookfunction(b, function() end)
+                        table.insert(recoilHooks, hook)
+                    end
+                end
+            end
+        end)
+        ui.notify({
+            title = 'No Recoil',
+            message = 'Enabled',
+            duration = 2
+        })
+    else
+        -- Restore recoil functions
+        for _, hook in ipairs(recoilHooks) do
+            pcall(function()
+                hookfunction(hook, hook)
+            end)
+        end
+        recoilHooks = {}
+        ui.notify({
+            title = 'No Recoil',
+            message = 'Disabled',
+            duration = 2
+        })
+    end
+end
+
+-- No Spread Logic
+local spreadModified = false
+local function toggleNoSpread(state)
+    if state then
+        pcall(function()
+            setidentity(8)
+            for a, b in getgc(true) do
+                if type(b) == "table" then
+                    pcall(function()
+                        setreadonly(b, false)
+                    end)
+                    if rawget(b, "SpreadMagnitude") ~= nil then
+                        rawset(b, "SpreadMagnitude", 0)
+                    end
+                    if rawget(b, "SpreadRoll") ~= nil then
+                        rawset(b, "SpreadRoll", 0)
+                    end
+                    if rawget(b, "ProjectileSpread") ~= nil then
+                        rawset(b, "ProjectileSpread", 0)
+                    end
+                    local c = rawget(b, "NudgeX")
+                    if type(c) == "table" then
+                        pcall(function()
+                            setreadonly(c, false)
+                        end)
+                        rawset(c, "Min", 0)
+                        rawset(c, "Max", 0)
+                    end
+                    local d = rawget(b, "NudgeY")
+                    if type(d) == "table" then
+                        pcall(function()
+                            setreadonly(d, false)
+                        end)
+                        rawset(d, "Min", 0)
+                        rawset(d, "Max", 0)
+                    end
+                    if rawget(b, "OnesidedXNudge") ~= nil then
+                        rawset(b, "OnesidedXNudge", 0)
+                    end
+                    if rawget(b, "RecoverScale") ~= nil then
+                        rawset(b, "RecoverScale", 0)
+                    end
+                end
+            end
+        end)
+        spreadModified = true
+        ui.notify({
+            title = 'No Spread',
+            message = 'Enabled',
+            duration = 2
+        })
+    else
+        spreadModified = false
+        ui.notify({
+            title = 'No Spread',
+            message = 'Disabled (Rejoin to fully reset)',
+            duration = 3
+        })
+    end
+end
+
+-- Link toggles
+noRecoilToggle:bindToEvent('onToggle', function(newState)
+    toggleNoRecoil(newState)
+end)
+
+noSpreadToggle:bindToEvent('onToggle', function(newState)
+    toggleNoSpread(newState)
+end)
+
 -- FOV Slider
 combatSection:addSlider({
     text = 'Aim FOV',
@@ -612,6 +737,18 @@ settingsSection:addButton({
         antiAimToggle:disable()
     end
     
+    -- Reset No Recoil
+    if noRecoilToggle:getState() then
+        noRecoilToggle:disable()
+        toggleNoRecoil(false)
+    end
+    
+    -- Reset No Spread
+    if noSpreadToggle:getState() then
+        noSpreadToggle:disable()
+        toggleNoSpread(false)
+    end
+    
     -- Reset ESP
     if espMasterToggle:getState() then
         espMasterToggle:disable()
@@ -660,6 +797,13 @@ window:bindToEvent('destroyInternal', function()
     if neonModeToggle:getState() then
         updateAllNeon(false)
     end
+    -- Clean up recoil hooks
+    for _, hook in ipairs(recoilHooks) do
+        pcall(function()
+            hookfunction(hook, hook)
+        end)
+    end
+    recoilHooks = {}
 end)
 
 print('Astral Combat Hub loaded successfully!')
